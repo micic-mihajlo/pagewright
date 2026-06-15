@@ -5,6 +5,7 @@ import {
   Check,
   Code2,
   GitBranch,
+  KeyRound,
   Loader2,
   Monitor,
   Play,
@@ -166,6 +167,7 @@ export function Editor() {
 
   const [passcode, setPasscode] = useState("");
   const [passcodeError, setPasscodeError] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
   const [importHtml, setImportHtml] = useState(sampleHtml);
   const [importTitle, setImportTitle] = useState("Northstar AI landing page");
   const [instruction, setInstruction] = useState("");
@@ -212,14 +214,17 @@ export function Editor() {
 
   async function handleUnlock(event: React.FormEvent) {
     event.preventDefault();
+    if (!passcode.trim() || unlocking) return;
     setPasscodeError(null);
+    setUnlocking(true);
     try {
       const clientToken = crypto.randomUUID();
       const result = await createSession({ passcode, clientToken });
-      setSession(result);
       sessionStorage.setItem(sessionStorageKey, JSON.stringify(result));
+      setSession(result);
     } catch (error) {
       setPasscodeError(errorToMessage(error));
+      setUnlocking(false);
     }
   }
 
@@ -412,48 +417,118 @@ export function Editor() {
   /* ---- Passcode gate ---- */
   if (!session) {
     return (
-      <main className="grid min-h-svh place-items-center bg-background p-7 [background-image:radial-gradient(120%_120%_at_50%_-10%,rgba(240,178,64,0.08),transparent_55%)]">
-        <div className="w-full max-w-[440px] animate-[rise_0.5s_cubic-bezier(0.22,1,0.36,1)_both] rounded-xl border border-border bg-card p-8 shadow-2xl shadow-black/50">
-          <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground shadow-[0_0_28px_-8px_var(--amber-glow)]">
-            <Shield className="size-5" />
+      <main className="grid min-h-svh grid-cols-1 bg-background lg:grid-cols-[1.1fr_0.9fr]">
+        {/* Showcase */}
+        <aside className="relative hidden flex-col justify-between overflow-hidden border-r border-border p-14 lg:flex">
+          <div aria-hidden className="absolute inset-0">
+            <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] [background-size:40px_40px] [mask-image:radial-gradient(ellipse_75%_60%_at_28%_34%,#000,transparent_72%)]" />
+            <div className="absolute -left-28 top-[26%] size-[360px] rounded-full bg-primary/[0.10] blur-[120px]" />
           </div>
-          <p className="mt-5 font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-primary">
-            Pagewright
-          </p>
-          <h1 className="mt-3 text-[28px] font-semibold leading-[1.08] tracking-tight text-foreground">
-            A precision instrument for HTML.
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-            Natural-language edits, applied surgically and versioned. The passcode
-            is verified in Convex; provider keys and HTML never reach the bundle.
-          </p>
-          <form onSubmit={handleUnlock} className="mt-6 grid gap-4">
-            <label className="grid gap-2 text-xs font-medium text-muted-foreground">
-              Demo passcode
-              <Input
-                type="password"
-                value={passcode}
-                onChange={(event) => setPasscode(event.target.value)}
-                autoFocus
-                placeholder="Enter passcode"
-                className="font-mono"
-              />
-            </label>
-            {passcodeError && (
-              <p className="flex items-center gap-2 text-sm font-medium text-destructive">
-                <AlertTriangle className="size-4" /> {passcodeError}
-              </p>
-            )}
-            <Button type="submit" className="group">
-              Unlock editor
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-            </Button>
-          </form>
-          <p className="mt-5 flex items-center gap-2 font-mono text-[11px] text-muted-foreground/70">
-            <span className="size-1.5 rounded-full bg-primary" />
-            DEMO ACCESS GATE · NOT PRODUCTION AUTH
-          </p>
-        </div>
+
+          <div className="relative flex items-center gap-2.5">
+            <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-[#cf8d2a] text-primary-foreground shadow-[0_8px_26px_-10px_var(--amber-glow)] ring-1 ring-inset ring-white/25">
+              <Shield className="size-[18px]" />
+            </span>
+            <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
+              Pagewright
+            </span>
+          </div>
+
+          <div className="relative max-w-md">
+            <h2 className="text-[42px] font-semibold leading-[1.04] tracking-tight text-foreground">
+              Edit any page by{" "}
+              <span className="text-primary">describing the change.</span>
+            </h2>
+
+            <div className="mt-10 animate-[rise_0.7s_cubic-bezier(0.22,1,0.36,1)_0.1s_both] rounded-xl border border-border bg-card/80 p-4 shadow-2xl shadow-black/40 backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-[13px] text-foreground/90">
+                <span className="grid size-5 flex-none place-items-center rounded-md bg-primary/15 text-primary">
+                  <Send className="size-3" />
+                </span>
+                make the CTA more prominent
+              </div>
+              <div className="mt-3 grid gap-1.5 font-mono text-[11px] leading-relaxed">
+                <div className="rounded border border-destructive/20 bg-destructive/10 px-2.5 py-1.5 text-destructive">
+                  - &lt;a class="btn"&gt;Book demo&lt;/a&gt;
+                </div>
+                <div className="rounded border border-ok/20 bg-ok/10 px-2.5 py-1.5 text-ok">
+                  + &lt;a class="btn btn--primary"&gt;Book a demo →&lt;/a&gt;
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2 font-mono text-[11px]">
+                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--amber-line)] bg-[var(--amber-dim)] px-2 py-0.5 text-primary">
+                  v4 → v5
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-ok/25 bg-ok/10 px-2 py-0.5 text-ok">
+                  <Check className="size-3" /> validated
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative flex items-center gap-2 font-mono text-[11px] tracking-wide text-muted-foreground/70">
+            <span>patch</span>
+            <span className="text-primary/60">/</span>
+            <span>validate</span>
+            <span className="text-primary/60">/</span>
+            <span>version</span>
+          </div>
+        </aside>
+
+        {/* Form */}
+        <section className="relative grid place-items-center px-6 py-12">
+          <div className="w-full max-w-[348px] animate-[rise_0.5s_cubic-bezier(0.22,1,0.36,1)_both]">
+            <div className="mb-9 flex items-center gap-2.5 lg:hidden">
+              <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-[#cf8d2a] text-primary-foreground ring-1 ring-inset ring-white/25">
+                <Shield className="size-[18px]" />
+              </span>
+              <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
+                Pagewright
+              </span>
+            </div>
+
+            <h1 className="text-[26px] font-semibold tracking-tight text-foreground">
+              Enter the editor
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Unlock with the shared demo passcode.
+            </p>
+
+            <form onSubmit={handleUnlock} className="mt-7 space-y-3">
+              <div className="relative">
+                <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="password"
+                  value={passcode}
+                  onChange={(event) => setPasscode(event.target.value)}
+                  autoFocus
+                  placeholder="Passcode"
+                  aria-label="Passcode"
+                  className="h-12 pl-10 font-mono tracking-wider placeholder:font-sans placeholder:tracking-normal"
+                />
+              </div>
+              {passcodeError && (
+                <p className="flex animate-[rise_0.25s_ease_both] items-center gap-2 text-sm font-medium text-destructive">
+                  <AlertTriangle className="size-4 shrink-0" /> {passcodeError}
+                </p>
+              )}
+              <Button
+                type="submit"
+                disabled={unlocking}
+                className="group h-12 w-full text-[15px] shadow-[0_12px_30px_-12px_var(--amber-glow)]"
+              >
+                {unlocking ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <>
+                    Enter editor
+                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                  </>
+                )}
+              </Button>
+            </form>
+          </div>
+        </section>
       </main>
     );
   }
