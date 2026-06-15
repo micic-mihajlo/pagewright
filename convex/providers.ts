@@ -53,7 +53,7 @@ const MODELS = {
   },
   openai: {
     strong: () => env("AI_MODEL_STRONG_OPENAI", "gpt-5.5"),
-    cheap: () => env("AI_MODEL_CHEAP_OPENAI", "gpt-5.4-nano"),
+    cheap: () => env("AI_MODEL_CHEAP_OPENAI", "gpt-5.4-mini"),
   },
 };
 
@@ -86,7 +86,7 @@ export const MODEL_CATALOG = [
   { id: "anthropic:strong", label: "Claude Opus 4.8", tier: "strong" as ModelTier },
   { id: "anthropic:cheap", label: "Claude Haiku 4.5", tier: "cheap" as ModelTier },
   { id: "openai:strong", label: "GPT-5.5", tier: "strong" as ModelTier },
-  { id: "openai:cheap", label: "GPT-5.4 nano", tier: "cheap" as ModelTier },
+  { id: "openai:cheap", label: "GPT-5.4 mini", tier: "cheap" as ModelTier },
 ] as const;
 
 function vendorModel(vendor: Vendor, tier: ModelTier): string {
