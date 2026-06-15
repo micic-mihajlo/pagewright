@@ -106,7 +106,7 @@ const MODEL_OPTIONS = [
   { id: "anthropic:strong", label: "Claude Opus 4.8" },
   { id: "anthropic:cheap", label: "Claude Haiku 4.5" },
   { id: "openai:strong", label: "GPT-5.5" },
-  { id: "openai:cheap", label: "GPT-5.4 nano" },
+  { id: "openai:cheap", label: "GPT-5.4 mini" },
 ];
 const emptyVersions: WorkspaceVersion[] = [];
 const emptyMessages: WorkspaceMessage[] = [];
