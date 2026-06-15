@@ -1,237 +1,197 @@
 # Pagewright
 
-Pagewright is a demo natural-language HTML editor. A user unlocks the app with a shared demo passcode, pastes or uploads an HTML page, previews it in a sandboxed iframe, then asks for edits such as "shorten the footer", "change the background to light blue", "revert to the last version", or "rebuild this as a modern SaaS landing page".
+**Natural-language HTML editing that's surgical, versioned, and self-correcting.**
 
-The MVP is intentionally not a production SaaS product. It is a versioned editing workflow where the model proposes structured changes and the app owns parsing, patching, validation, version history, and preview rendering.
+Unlock with a shared passcode, paste or upload an HTML page, and edit it by describing what you want — _"shorten the footer"_, _"change the background to light blue"_, _"make the CTA more prominent"_, _"revert to the last version"_, or _"rebuild this as a modern SaaS landing page."_ Pagewright decides whether each instruction is a surgical edit or a full on-brand regeneration, applies it, validates the result, and saves every variation as an immutable version you can revert to.
 
-## Stack
+It is a demo app, not a production SaaS: the AI editing workflow is the point, and the application — not the model — owns parsing, patching, validation, version history, and preview rendering.
 
-- Vite, React, and TypeScript for the client app.
-- Convex for backend functions, database state, file storage, and AI workflows.
-- Vercel for hosting the Vite app.
-- Deterministic TypeScript patching for canonical targeted edits, plus server-side provider-backed freeform editing through OpenRouter, OpenAI, or Anthropic.
-- `diff-match-patch`, `clsx`, and `lucide-react` for UI and diff support.
+---
+
+## Highlights
+
+- **The system decides edit vs. regeneration.** A cheap classifier routes each instruction (targeted edit / global style / content / section or full regeneration / question / unsupported). Surgical edits stay surgical; whole-page restyles become regenerations — even when phrased as _"make this more product-focused and AI-looking."_
+- **Brand-faithful regeneration.** The brand spec (colors, fonts, radii, tone) and content inventory are extracted from your HTML and fed to the model, so a rebuild keeps your palette, typography, claims, and CTAs while improving the layout.
+- **Hybrid provider fallback, one clean abstraction.** All model calls go through a single module. It prefers direct Anthropic/OpenAI APIs when their keys are set and falls back to OpenRouter (which proxies both), with cross-vendor failover and per-call logging — no provider branching scattered through the code.
+- **Cost- and latency-aware routing.** Obvious edits run on a deterministic, zero-model path. Cheap-tier models handle classification and simple edits; strong-tier models are reserved for regeneration and repair.
+- **Self-correction.** Generated output is validated (HTML parse, content preservation, scope) and gets one automatic repair pass before a version is saved.
+- **Deterministic versioning & revert.** Every successful change is an immutable version with a full HTML snapshot. Revert never calls a model.
+- **Safe preview.** User HTML renders inside a sandboxed iframe; provider keys and the passcode stay server-side in Convex.
+
+---
+
+## Tech Stack
+
+| Layer | Choice |
+| --- | --- |
+| Framework | [TanStack Start](https://tanstack.com/start) (React 19, SSR via Nitro) |
+| Language | TypeScript |
+| UI | Tailwind CSS v4 + [shadcn/ui](https://ui.shadcn.com), `lucide-react` |
+| Backend / DB / storage / actions | [Convex](https://convex.dev) |
+| Models | Anthropic, OpenAI, and/or OpenRouter (gateway to both) |
+| HTML tooling | DOM parsing + deterministic patch engine, `diff-match-patch` |
+| Hosting | Vercel (app) + Convex (backend) |
+
+---
 
 ## Architecture
 
-The frontend presents a two-pane editor: chat, run status, and version timeline on the left; rendered preview, source, diff, and validation details on the right. The preview must render user HTML inside an iframe sandbox and must not expose backend tokens or provider keys.
+A two-pane editor: **left** — passcode gate, HTML import, run status, version graph, activity log, instruction composer, and a model selector; **right** — sandboxed preview with device toggles, plus source, diff, and validation tabs.
 
-Convex owns privileged work:
+**The client owns** deterministic work that needs no model: the cheap patterns (footer/hero/testimonials/CTA/background), revert, patch application against `before_hash`, and the full validation pass before a version is saved.
 
-- passcode validation and temporary demo sessions
-- HTML snapshot storage in Convex File Storage
-- document and immutable version metadata
-- section indexes, structural summaries, brand specs, and content inventories
-- version creation, validation metadata, run history, and model-call/provider metadata
+**Convex owns** all privileged work: passcode validation and temporary demo sessions, HTML snapshot storage in Convex File Storage, document and immutable version metadata, section indexes / structural summaries / brand specs / content inventories, run history, validation results, and model-call logs.
 
-The app uses a simple demo passcode, not full auth. Do not add Clerk, OAuth, account signup, billing, or team permissions for the MVP.
+**The AI pipeline** ([`convex/ai.ts`](convex/ai.ts)) runs entirely server-side:
 
-## No Secrets Included
+```
+instruction → classify (cheap) → route
+   ├─ question_only           → answer, no version
+   ├─ targeted/style/content  → scope-constrained patch (cheap, brand-constrained)
+   └─ section/full_regen       → brand-aware regeneration (strong)
+          ↓
+   validate (parse · content preservation · scope)
+          ↓  (if it drifts)
+   one repair pass (strong)
+          ↓
+   return HTML + route + model-call logs
+```
 
-No API keys are included in this repository. Set `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and/or `ANTHROPIC_API_KEY` yourself. Set `APP_PASSCODE` yourself. Keep model provider keys and the passcode server-side in Convex environment variables, not in frontend code.
+The provider abstraction ([`convex/providers.ts`](convex/providers.ts)) builds an ordered candidate chain per tier (direct vendor → OpenRouter, across both vendors) and tries each until one succeeds, logging every attempt. The passcode is a **demo access gate, not authentication** — there are no accounts, billing, or team permissions.
 
-## Local Setup
+---
 
-Prerequisites:
+## Quick Start (local)
 
-- Node.js and pnpm
-- Convex CLI access to Mihajlo's personal Convex account
-- Optional OpenAI and/or Anthropic API key for model-backed edits
-
-Install dependencies:
+**Prerequisites:** Node.js 20+, `pnpm`, a free [Convex](https://convex.dev) account, and at least one model provider key (OpenRouter is the simplest — one key reaches both Anthropic and OpenAI models).
 
 ```bash
+# 1. Install
 pnpm install
+
+# 2. Link a Convex project (writes VITE_CONVEX_URL + CONVEX_DEPLOYMENT to .env.local)
+pnpm convex:dev        # leave running, or run `npx convex dev --once` to push and exit
+
+# 3. Configure server-side secrets (stored in Convex, never in the bundle)
+npx convex env set APP_PASSCODE "your-demo-passcode"
+npx convex env set OPENROUTER_API_KEY "sk-or-..."     # or OPENAI_API_KEY / ANTHROPIC_API_KEY
+
+# 4. Run the app
+pnpm dev               # http://localhost:5173
 ```
 
-Create local environment placeholders:
+Open the app, enter your passcode, and paste or upload an HTML page (a sample is pre-filled).
 
-```bash
-cp .env.example .env.local
-```
-
-Start or configure Convex:
-
-```bash
-pnpm convex dev
-```
-
-You can also use the package script:
-
-```bash
-pnpm convex:dev
-```
-
-On first run, Convex will prompt you to create or link a project and should populate local Convex values such as `VITE_CONVEX_URL` and `CONVEX_DEPLOYMENT` in `.env.local`.
-
-Set required server-side Convex environment variables:
-
-```bash
-pnpm convex env set APP_PASSCODE "replace-with-your-demo-passcode"
-pnpm convex env set DEMO_SESSION_TTL_HOURS "24"
-```
-
-The deployed app uses deterministic patching for canonical targeted edits and a server-side provider action for freeform edits. Set at least one model provider key:
-
-```bash
-pnpm convex env set AI_PROVIDER "openrouter"
-pnpm convex env set OPENROUTER_API_KEY "replace-with-your-openrouter-key"
-pnpm convex env set AI_MODEL_PATCHER "openai/gpt-4o-mini"
-```
-
-or use OpenAI directly:
-
-```bash
-pnpm convex env set AI_PROVIDER "openai"
-pnpm convex env set OPENAI_API_KEY "replace-with-your-openai-key"
-```
-
-or:
-
-```bash
-pnpm convex env set AI_PROVIDER "anthropic"
-pnpm convex env set ANTHROPIC_API_KEY "replace-with-your-anthropic-key"
-```
-
-Run the frontend dev server:
-
-```bash
-pnpm dev
-```
-
-Build locally:
-
-```bash
-pnpm build
-```
+---
 
 ## Environment Variables
 
-Use `.env.example` as the template and keep real values in `.env.local`, Convex dashboard settings, or deployment environment variables.
+Only the variables below are read by the code. The frontend values land in `.env.local`; **all secrets live in Convex env**, never in the client bundle.
 
-| Variable | Required | Where | Purpose |
-| --- | --- | --- | --- |
-| `VITE_CONVEX_URL` | Yes | Vercel and local Vite env | Public Convex URL used by the frontend. |
-| `CONVEX_DEPLOYMENT` | Yes | Local Convex env | Convex deployment identifier used by the CLI. |
-| `APP_PASSCODE` | Yes | Convex env | Shared demo passcode. Must not be exposed to the client bundle. |
-| `DEMO_SESSION_TTL_HOURS` | Yes | Convex env | Expiration window for temporary demo sessions. |
-| `AI_PROVIDER` | Optional | Convex env | Primary provider: `openrouter`, `openai`, or `anthropic`. |
-| `OPENROUTER_API_KEY` | Optional | Convex env | Required when using OpenRouter. |
-| `OPENAI_API_KEY` | Optional | Convex env | Required when using OpenAI. |
-| `ANTHROPIC_API_KEY` | Optional | Convex env | Required when using Anthropic. |
-| `AI_FALLBACK_ENABLED` | Optional | Convex env | Enables fallback when both providers are configured. |
-| `AI_MODEL_CLASSIFIER` | Optional | Convex env | Model override for instruction routing. |
-| `AI_MODEL_PATCHER` | Optional | Convex env | Model override for structured patch generation. |
-| `AI_MODEL_REGEN` | Optional | Convex env | Model override for section or full-page regeneration. |
-| `AI_MODEL_JUDGE` | Optional | Convex env | Model override for content preservation and brand drift checks. |
-| `AI_MODEL_EMBEDDINGS` | Optional | Convex env | Model override for section embeddings. |
-| `MAX_REPAIR_ATTEMPTS` | Optional | Convex env | Maximum automatic repair retries after validation failure. |
-| `MAX_DIRECT_MODEL_HTML_TOKENS` | Optional | Convex env | Threshold above which full HTML must not be sent directly to a model. |
-| `ENABLE_PLAYWRIGHT_VALIDATION` | Optional | Convex env | Enables browser/screenshot validation if implemented. |
-| `PREVIEW_ORIGIN` | Optional | Convex or Vercel env | Dedicated preview origin if preview isolation is split later. |
-| `SCREENSHOT_STORAGE_ENABLED` | Optional | Convex env | Enables storing validation screenshots if implemented. |
+### Required
 
-## Convex Setup
+| Variable | Where | Purpose |
+| --- | --- | --- |
+| `VITE_CONVEX_URL` | `.env.local` + Vercel | Public Convex URL for the frontend (Convex writes this). |
+| `CONVEX_DEPLOYMENT` | `.env.local` | Convex deployment id used by the CLI (Convex writes this). |
+| `APP_PASSCODE` | Convex env | Shared demo passcode. Server-side only. |
+| **one of** `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` | Convex env | At least one model provider key. |
 
-1. Log in to the Convex CLI with the personal account that will own the demo.
-2. Run `pnpm convex dev` and create or link the project when prompted.
-3. Keep `APP_PASSCODE`, provider keys, model defaults, and validation settings in Convex environment variables.
-4. Store raw HTML snapshots in Convex File Storage. Do not store oversized raw HTML directly inside Convex documents.
-5. Use Convex tables for documents, versions, chat messages, edit runs, patch ops, validation results, section indexes, demo sessions, and model call metadata.
+### Optional
 
-For production:
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DEMO_SESSION_TTL_HOURS` | `24` | Lifetime of a demo session token. |
+| `AI_MODEL_STRONG_ANTHROPIC` | `claude-opus-4-8` | Strong-tier Anthropic model (regeneration, repair). |
+| `AI_MODEL_CHEAP_ANTHROPIC` | `claude-haiku-4-5` | Cheap-tier Anthropic model (classify, simple edits). |
+| `AI_MODEL_STRONG_OPENAI` | `gpt-5.5` | Strong-tier OpenAI model. |
+| `AI_MODEL_CHEAP_OPENAI` | `gpt-5.4-mini` | Cheap-tier OpenAI model. |
+
+See [`.env.example`](.env.example) for a copy-paste template.
+
+### Providers & model tiers
+
+- Set any combination of the three keys. With **OpenRouter only**, both Anthropic- and OpenAI-class models route through the gateway and still fail over between vendors. Add a **direct** vendor key and that vendor is preferred (no proxy hop), with OpenRouter as backup.
+- **Strong** tier = Opus 4.8 / GPT-5.5 (regeneration, repair). **Cheap** tier = Haiku 4.5 / GPT-5.4-mini (classification, targeted edits). Override any of them with the `AI_MODEL_*` vars above.
+- In the UI, the composer's **model selector** can pin a specific model (or leave it on _Auto · route by task_). Whatever runs — including any fallback or repair — is recorded on the edit run, shown in the activity log, and stored in the `modelCalls` table.
+
+---
+
+## Deploy
+
+Pagewright builds to an SSR app (TanStack Start compiled by **Nitro**), which Vercel auto-detects via [`vercel.json`](vercel.json) (`"framework": "tanstack-start"`).
+
+1. **Backend:** `npx convex deploy` (or `pnpm convex:deploy`) to push functions to your production Convex deployment, then set the production Convex env (`APP_PASSCODE`, a provider key, optional model overrides).
+2. **Frontend:** import the repo in Vercel (or `vercel --prod`). Set `VITE_CONVEX_URL` to the **production** Convex URL. Build command `pnpm build`, install `pnpm install` — no output-directory override needed (Nitro emits the Vercel build output).
+
+---
+
+## Using It
+
+1. **Unlock** with the passcode.
+2. **Import** HTML (paste or upload). It's stored as `v0`, then parsed, summarized, and brand-extracted.
+3. **Edit** by typing an instruction and pressing **Run edit** (or `⌘ / Ctrl + ↵`). Watch the route, model, and validation in the activity log; each success becomes a new version.
+4. **Inspect** via the Preview / Source / Diff / Validation tabs and the device toggles.
+5. **Revert** from any node in the version graph — deterministic, no model call.
+
+### Things to try
+
+| Instruction | Expected route |
+| --- | --- |
+| `shorten the footer` | deterministic targeted edit (no model) |
+| `change the background to light blue` | global style edit |
+| `make the CTA more prominent` | targeted edit |
+| `rebuild this as a modern SaaS landing page` | full regeneration (strong tier, on-brand) |
+| `make this more product-focused and AI-looking, keep it on-brand` | full regeneration |
+| `revert to the last version` | deterministic revert (no model) |
+
+Pin a specific model in the composer's selector, run an edit, then check the activity log to see which provider/model actually ran.
+
+---
+
+## Resetting the Demo
+
+To wipe all documents, versions, runs, logs, sessions, and stored HTML snapshots back to a clean slate:
 
 ```bash
-pnpm convex deploy
+npx convex run admin:resetDemo
 ```
 
-or:
+`admin:resetDemo` is an internal mutation (not callable from the client). After running it, the next visitor lands on the empty import screen.
 
-```bash
-pnpm convex:deploy
+---
+
+## Project Structure
+
+```
+convex/
+  ai.ts          # classify → patch/regenerate → validate → repair pipeline
+  providers.ts   # hybrid model abstraction (Anthropic/OpenAI/OpenRouter + fallback)
+  documents.ts   # versions, runs, model-call logging, revert
+  sessions.ts    # passcode gate + demo sessions
+  admin.ts       # resetDemo internal mutation
+  schema.ts      # Convex tables
+src/
+  routes/        # TanStack Start routes (__root, index)
+  components/
+    Editor.tsx   # the two-pane editor
+    ui/          # shadcn/ui primitives
+  lib/           # html analysis, patch engine, validation (deterministic, client-side)
+  styles/app.css # Tailwind v4 + theme tokens
 ```
 
-After deployment, copy the production Convex URL into Vercel as `VITE_CONVEX_URL`.
-
-## Vercel Deploy
-
-This is a Vite single-page app. `vercel.json` rewrites all routes to `index.html` so client-side routing works after refreshes and direct links.
-
-Recommended Vercel settings:
-
-- Framework preset: Vite
-- Install command: `pnpm install`
-- Build command: `pnpm build`
-- Output directory: `dist`
-- Environment variable: `VITE_CONVEX_URL=<production Convex URL>`
-
-Deploy flow:
-
-```bash
-pnpm build
-pnpm convex deploy
-vercel
-vercel --prod
-```
-
-Set `APP_PASSCODE`, provider keys, and server-side model settings in Convex for the production deployment. Only add them to Vercel if future Vercel server functions require them.
-
-## Oversized HTML Strategy
-
-The oversized requirement is central to the MVP. The app must not truncate a large HTML file and pretend the model saw the complete page.
-
-Ingestion should create these artifacts:
-
-- raw HTML snapshot in Convex File Storage
-- parsed DOM tree with stable internal node IDs
-- logical section map
-- CSS rule index and asset manifest
-- global structural summary
-- section summaries and section hashes
-- extracted brand/style spec
-- content inventory
-- optional embeddings for section retrieval
-
-For targeted edits, the model should receive only the global summary, brand spec, relevant section HTML, relevant CSS rules, nearby context when needed, the user instruction, and the structured patch schema. For example, "shorten the footer" should retrieve footer context rather than sending the full page.
-
-For full regeneration, the future model-backed app should build a blueprint from the brand spec and content inventory, regenerate section by section, reassemble deterministically, then validate content survival and brand consistency before activating the new version.
-
-## Validation and Self-Correction
-
-Model-generated changes must be validated before a version becomes active. The app should prefer structured model outputs and deterministic application logic:
-
-1. Classify the user instruction into a route such as `targeted_edit`, `global_style_edit`, `full_regeneration`, `revert`, or `unsupported`.
-2. Generate structured patch operations for targeted edits.
-3. Apply patch ops only when the target and `before_hash` still match.
-4. Validate HTML parsing, allowed scope, content inventory, CSS sanity, saved snapshot, and preview loadability.
-5. Attempt automatic repair only for model-generated edits, up to `MAX_REPAIR_ATTEMPTS`.
-6. Save and activate only passed or acceptable warning-level results.
-7. Keep failed runs visible, but do not silently activate broken HTML.
-
-Revert is deterministic and must not call a model. It creates a new version whose HTML equals a previous snapshot.
-
-## QA Checklist
-
-Automated tests are not configured yet. Until they are added, use this manual checklist plus `pnpm lint` and `pnpm build`.
-
-- Unlock the app with the configured passcode and reject an incorrect passcode.
-- Paste initial HTML and verify version `v0` is saved.
-- Upload an `.html` file and verify the same ingestion path runs.
-- Confirm the preview renders inside a sandboxed iframe and cannot navigate the parent app.
-- Ask "shorten the footer" and verify the route is targeted, only footer/footer CSS changes, validation is shown, and a new version is saved.
-- Ask "change the background to light blue" and verify the change is treated as a style edit without content rewrites.
-- Ask "revert to the last version" and verify no model call is made, a new version is created, and history is preserved.
-- Test a large HTML fixture above `MAX_DIRECT_MODEL_HTML_TOKENS`; verify only relevant section context plus summaries are sent for a targeted edit.
-- Force a bad model output or invalid patch and verify validation catches it, repair is attempted, and broken output is not activated.
-- Run with OpenRouter-only, OpenAI-only, Anthropic-only, and fallback combinations when credentials are available.
-- Confirm no real API keys, passcodes, customer data, or provider secrets are committed.
+---
 
 ## Known Limitations
 
-- The shared passcode is demo access control, not production authentication.
-- Provider-backed freeform edits are enabled when `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY` is configured server-side.
-- Complex JavaScript inside arbitrary user HTML may not preserve runtime behavior.
-- External assets may fail if they require authentication, block embedding, or depend on a specific origin.
-- Screenshot or visual diff validation is optional unless a Playwright worker is implemented.
-- Holistic full-page regeneration is a stretch path after targeted editing, versioning, and validation are reliable.
-- The MVP is not a website publishing workflow and does not include custom domains, asset proxying, billing, accounts, or team permissions.
+- The passcode is demo access control, **not** authentication.
+- Freeform/regeneration edits need at least one provider key set in Convex.
+- Very large HTML beyond the configured snapshot size is rejected for direct freeform edits; the deterministic targeted path still applies.
+- Complex JavaScript inside arbitrary user HTML may not preserve runtime behavior; external assets can fail if they require auth or block embedding.
+- Screenshot / visual-diff validation is not implemented.
+
+---
+
+## Security Notes
+
+No API keys, passcodes, or secrets are committed to this repository. Set `APP_PASSCODE` and at least one provider key yourself, in Convex environment variables. Provider/API calls are server-side only; the sandboxed preview iframe never receives backend tokens.
