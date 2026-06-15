@@ -7,7 +7,7 @@
     "dev": "vite",
     "convex:dev": "convex dev",
     "convex:deploy": "convex deploy",
-    "build": "tsc -b && vite build",
+    "build": "vite build && tsc -b",
     "lint": "eslint .",
     "preview": "vite preview"
   },
