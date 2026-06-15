@@ -26,3 +26,7 @@ dist-ssr
 
 # TanStack Router generated
 src/routeTree.gen.ts
+
+# Nitro build output
+.output
+.nitro
