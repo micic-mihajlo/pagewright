@@ -11,7 +11,6 @@ import {
   Play,
   RotateCcw,
   Send,
-  Shield,
   Smartphone,
   Tablet,
   Upload,
@@ -425,14 +424,9 @@ export function Editor() {
             <div className="absolute -left-28 top-[26%] size-[360px] rounded-full bg-primary/[0.10] blur-[120px]" />
           </div>
 
-          <div className="relative flex items-center gap-2.5">
-            <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-[#cf8d2a] text-primary-foreground shadow-[0_8px_26px_-10px_var(--amber-glow)] ring-1 ring-inset ring-white/25">
-              <Shield className="size-[18px]" />
-            </span>
-            <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
-              Pagewright
-            </span>
-          </div>
+          <span className="relative font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-foreground">
+            Pagewright
+          </span>
 
           <div className="relative max-w-md">
             <h2 className="text-[42px] font-semibold leading-[1.04] tracking-tight text-foreground">
@@ -478,14 +472,9 @@ export function Editor() {
         {/* Form */}
         <section className="relative grid place-items-center px-6 py-12">
           <div className="w-full max-w-[348px] animate-[rise_0.5s_cubic-bezier(0.22,1,0.36,1)_both]">
-            <div className="mb-9 flex items-center gap-2.5 lg:hidden">
-              <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-[#cf8d2a] text-primary-foreground ring-1 ring-inset ring-white/25">
-                <Shield className="size-[18px]" />
-              </span>
-              <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
-                Pagewright
-              </span>
-            </div>
+            <span className="mb-9 block font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-foreground lg:hidden">
+              Pagewright
+            </span>
 
             <h1 className="text-[26px] font-semibold tracking-tight text-foreground">
               Enter the editor
@@ -547,8 +536,8 @@ export function Editor() {
     return (
       <main className="grid min-h-svh place-items-center bg-background p-7 [background-image:radial-gradient(120%_120%_at_50%_-10%,rgba(240,178,64,0.07),transparent_55%)]">
         <div className="w-full max-w-[680px] animate-[rise_0.5s_cubic-bezier(0.22,1,0.36,1)_both] rounded-xl border border-border bg-card p-8 shadow-2xl shadow-black/50">
-          <p className="flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-primary">
-            <Shield className="size-3.5" /> Pagewright
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-primary">
+            Pagewright
           </p>
           <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">
             Load a page to begin
@@ -623,10 +612,7 @@ export function Editor() {
       <div className="grid h-svh grid-rows-[auto_minmax(0,1fr)] bg-background">
         {/* Top bar */}
         <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-card/60 px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-8 flex-none place-items-center rounded-md bg-primary text-primary-foreground shadow-[0_0_22px_-8px_var(--amber-glow)]">
-              <Shield className="size-4" />
-            </span>
+          <div className="flex min-w-0 items-center">
             <div className="min-w-0 leading-tight">
               <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 Pagewright
