@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'convex/_generated']),
+  globalIgnores(['dist', 'convex/_generated', 'src/routeTree.gen.ts']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -17,6 +17,18 @@ export default defineConfig([
     ],
     languageOptions: {
       globals: globals.browser,
+    },
+  },
+  {
+    // shadcn primitives and TanStack route/router files intentionally
+    // co-locate variant helpers / route objects with components.
+    files: [
+      'src/components/ui/**/*.{ts,tsx}',
+      'src/routes/**/*.tsx',
+      'src/router.tsx',
+    ],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])
