@@ -23,3 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# TanStack Router generated
+src/routeTree.gen.ts
+
+# Nitro build output
+.output
+.nitro
