@@ -134,6 +134,7 @@ export const createEditVersion = mutation({
     patchOps: v.array(v.any()),
     validation: v.any(),
     analysis: v.any(),
+    modelMeta: v.optional(v.any()),
   },
   returns: v.object({
     versionId: v.id("documentVersions"),
@@ -160,6 +161,16 @@ export const createEditVersion = mutation({
     const nextVersionNumber =
       versions.reduce((max, version) => Math.max(max, version.versionNumber), -1) + 1;
 
+    const meta = (args.modelMeta ?? null) as {
+      provider?: string;
+      modelUsed?: string;
+      tier?: string;
+      fallbackUsed?: boolean;
+      repairUsed?: boolean;
+      modelCalls?: Array<Record<string, unknown>>;
+    } | null;
+    const usedModel = Boolean(meta?.modelUsed);
+
     const editRunId = await ctx.db.insert("editRuns", {
       documentId: args.documentId,
       baseVersionId: args.baseVersionId,
@@ -168,12 +179,22 @@ export const createEditVersion = mutation({
       status: args.validation.status === "failed" ? "failed" : "completed",
       targetSections: args.targetSections,
       allowedChangeScope: args.allowedChangeScope,
-      modelPolicy: { modelCallNeeded: false, implementation: "deterministic_mvp_patch_engine" },
-      fallbackUsed: false,
+      modelPolicy: usedModel
+        ? {
+            modelCallNeeded: true,
+            tier: meta?.tier ?? "unknown",
+            repairUsed: Boolean(meta?.repairUsed),
+            implementation: "provider_abstraction",
+          }
+        : { modelCallNeeded: false, implementation: "deterministic_patch_engine" },
+      modelUsed: meta?.modelUsed,
+      fallbackUsed: Boolean(meta?.fallbackUsed),
       startedAt: now,
       completedAt: now,
       error: args.validation.status === "failed" ? args.validation.summary : undefined,
     });
+
+    await insertModelCalls(ctx, editRunId, meta?.modelCalls, now);
 
     if (args.validation.status === "failed") {
       await insertPatchOps(ctx, editRunId, args.patchOps, false);
@@ -234,12 +255,17 @@ export const createEditVersion = mutation({
       content: args.instruction,
       createdAt: now,
     });
+    const modelNote = usedModel
+      ? ` · ${meta?.provider ?? "model"} · ${meta?.modelUsed ?? ""} (${meta?.tier ?? "tier"})${
+          meta?.fallbackUsed ? " · fallback" : ""
+        }${meta?.repairUsed ? " · repaired" : ""}`
+      : " · deterministic patch (no model)";
     await ctx.db.insert("chatMessages", {
       documentId: args.documentId,
       versionId,
       editRunId,
       role: "assistant",
-      content: `Saved as v${nextVersionNumber}. ${args.validation.summary}`,
+      content: `Saved as v${nextVersionNumber}. ${args.validation.summary}${modelNote}`,
       createdAt: now + 1,
     });
 
@@ -376,6 +402,31 @@ async function insertPatchOps(
         expectedScope: String(operation.expectedScope ?? ""),
         riskLevel: String(operation.riskLevel ?? "low"),
         applied,
+      }),
+    ),
+  );
+}
+
+async function insertModelCalls(
+  ctx: MutationCtx,
+  editRunId: Id<"editRuns">,
+  modelCalls: Array<Record<string, unknown>> | undefined,
+  now: number,
+) {
+  if (!Array.isArray(modelCalls) || modelCalls.length === 0) return;
+  await Promise.all(
+    modelCalls.map((call, index) =>
+      ctx.db.insert("modelCalls", {
+        editRunId,
+        task: String(call.task ?? "unknown"),
+        provider: `${String(call.vendor ?? "unknown")} (${String(call.transport ?? "unknown")})`,
+        model: String(call.model ?? "unknown"),
+        inputTokenEstimate: 0,
+        outputTokenEstimate: 0,
+        latencyMs: Number(call.latencyMs ?? 0),
+        status: String(call.status ?? "unknown"),
+        error: typeof call.error === "string" ? call.error : undefined,
+        createdAt: now + index,
       }),
     ),
   );

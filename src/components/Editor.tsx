@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Check,
   Code2,
+  Cpu,
   GitBranch,
   KeyRound,
   Loader2,
@@ -11,7 +12,6 @@ import {
   Play,
   RotateCcw,
   Send,
-  Shield,
   Smartphone,
   Tablet,
   Upload,
@@ -101,6 +101,13 @@ type Tab = "preview" | "source" | "diff" | "validation";
 type Device = "desktop" | "tablet" | "mobile";
 
 const sessionStorageKey = "pagewright.demoSession";
+const MODEL_OPTIONS = [
+  { id: "auto", label: "Auto · route by task" },
+  { id: "anthropic:strong", label: "Claude Opus 4.8" },
+  { id: "anthropic:cheap", label: "Claude Haiku 4.5" },
+  { id: "openai:strong", label: "GPT-5.5" },
+  { id: "openai:cheap", label: "GPT-5.4 nano" },
+];
 const emptyVersions: WorkspaceVersion[] = [];
 const emptyMessages: WorkspaceMessage[] = [];
 const sampleHtml = `<!doctype html>
@@ -173,6 +180,7 @@ export function Editor() {
   const [instruction, setInstruction] = useState("");
   const [selectedTab, setSelectedTab] = useState<Tab>("preview");
   const [device, setDevice] = useState<Device>("desktop");
+  const [manualModelId, setManualModelId] = useState("auto");
   const [run, setRun] = useState<RunState>({ status: "idle" });
   const [activeHtml, setActiveHtml] = useState("");
   const [previousHtml, setPreviousHtml] = useState("");
@@ -299,29 +307,47 @@ export function Editor() {
     try {
       setRun({ status: "patching", route: decision.route, summary: decision.reasoningSummary });
       if (decision.modelCallNeeded) {
+        const baseAnalysis = analyzeHtml(activeHtml);
         const providerEdit = await generateHtmlEdit({
           sessionToken: session.token,
           html: activeHtml,
           instruction: trimmedInstruction,
           structuralSummary: currentVersion.structuralSummary,
+          brandSpec: baseAnalysis.brandSpec,
+          contentInventory: baseAnalysis.contentInventory,
+          manualModelId,
         });
+
+        // Question-only: the router answered without producing a new version.
+        if (providerEdit.isQuestion) {
+          setInstruction("");
+          setRun({
+            status: "completed",
+            route: providerEdit.route,
+            summary: providerEdit.summary,
+          });
+          return;
+        }
+
         const plan: PatchPlan = {
           route: providerEdit.route as PatchPlan["route"],
           confidence: decision.confidence,
           targetSections: providerEdit.targetSections as PatchPlan["targetSections"],
           allowedChangeScope: providerEdit.allowedChangeScope,
           modelCallNeeded: true,
-          recommendedModelTier: "strong",
-          reasoningSummary: providerEdit.summary,
+          recommendedModelTier: providerEdit.tier === "strong" ? "strong" : "cheap",
+          reasoningSummary: providerEdit.reasoning,
           operations: [],
         };
         const validation = validateChange(activeHtml, providerEdit.html, plan);
         setPreviousHtml(activeHtml);
         setSelectedTab("diff");
+        const fallbackNote = providerEdit.fallbackUsed ? " · fallback" : "";
+        const repairNote = providerEdit.repairUsed ? " · repaired" : "";
         setRun({
           status: "saving",
           route: providerEdit.route,
-          summary: `Saving ${providerEdit.provider} / ${providerEdit.modelUsed} output.`,
+          summary: `${providerEdit.provider} · ${providerEdit.modelUsed}${fallbackNote}${repairNote}`,
           validation,
         });
         const analysis = analyzeHtml(providerEdit.html);
@@ -339,13 +365,21 @@ export function Editor() {
           patchOps: providerEdit.patchOps,
           validation,
           analysis,
+          modelMeta: {
+            provider: providerEdit.provider,
+            modelUsed: providerEdit.modelUsed,
+            tier: providerEdit.tier,
+            fallbackUsed: providerEdit.fallbackUsed,
+            repairUsed: providerEdit.repairUsed,
+            modelCalls: providerEdit.modelCalls,
+          },
         });
         setInstruction("");
         setSelectedVersionId(null);
         setRun({
           status: "completed",
           route: providerEdit.route,
-          summary: providerEdit.summary,
+          summary: `${providerEdit.summary} — ${providerEdit.provider} · ${providerEdit.modelUsed}${fallbackNote}${repairNote}`,
           validation,
         });
         return;
@@ -425,14 +459,9 @@ export function Editor() {
             <div className="absolute -left-28 top-[26%] size-[360px] rounded-full bg-primary/[0.10] blur-[120px]" />
           </div>
 
-          <div className="relative flex items-center gap-2.5">
-            <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-[#cf8d2a] text-primary-foreground shadow-[0_8px_26px_-10px_var(--amber-glow)] ring-1 ring-inset ring-white/25">
-              <Shield className="size-[18px]" />
-            </span>
-            <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
-              Pagewright
-            </span>
-          </div>
+          <span className="relative font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-foreground">
+            Pagewright
+          </span>
 
           <div className="relative max-w-md">
             <h2 className="text-[42px] font-semibold leading-[1.04] tracking-tight text-foreground">
@@ -478,14 +507,9 @@ export function Editor() {
         {/* Form */}
         <section className="relative grid place-items-center px-6 py-12">
           <div className="w-full max-w-[348px] animate-[rise_0.5s_cubic-bezier(0.22,1,0.36,1)_both]">
-            <div className="mb-9 flex items-center gap-2.5 lg:hidden">
-              <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-primary to-[#cf8d2a] text-primary-foreground ring-1 ring-inset ring-white/25">
-                <Shield className="size-[18px]" />
-              </span>
-              <span className="font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
-                Pagewright
-              </span>
-            </div>
+            <span className="mb-9 block font-mono text-[13px] font-semibold uppercase tracking-[0.2em] text-foreground lg:hidden">
+              Pagewright
+            </span>
 
             <h1 className="text-[26px] font-semibold tracking-tight text-foreground">
               Enter the editor
@@ -547,8 +571,8 @@ export function Editor() {
     return (
       <main className="grid min-h-svh place-items-center bg-background p-7 [background-image:radial-gradient(120%_120%_at_50%_-10%,rgba(240,178,64,0.07),transparent_55%)]">
         <div className="w-full max-w-[680px] animate-[rise_0.5s_cubic-bezier(0.22,1,0.36,1)_both] rounded-xl border border-border bg-card p-8 shadow-2xl shadow-black/50">
-          <p className="flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-primary">
-            <Shield className="size-3.5" /> Pagewright
+          <p className="font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-primary">
+            Pagewright
           </p>
           <h1 className="mt-3 text-2xl font-semibold leading-tight tracking-tight">
             Load a page to begin
@@ -623,10 +647,7 @@ export function Editor() {
       <div className="grid h-svh grid-rows-[auto_minmax(0,1fr)] bg-background">
         {/* Top bar */}
         <header className="flex h-14 items-center justify-between gap-4 border-b border-border bg-card/60 px-4">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-8 flex-none place-items-center rounded-md bg-primary text-primary-foreground shadow-[0_0_22px_-8px_var(--amber-glow)]">
-              <Shield className="size-4" />
-            </span>
+          <div className="flex min-w-0 items-center">
             <div className="min-w-0 leading-tight">
               <span className="block font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 Pagewright
@@ -785,15 +806,21 @@ export function Editor() {
                 className="min-h-[88px] resize-y"
               />
               <div className="flex items-center justify-between gap-2.5">
-                <span className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70">
-                  <kbd className="rounded border border-input border-b-2 bg-background px-1.5 py-0.5 text-[10px]">
-                    ⌘
-                  </kbd>
-                  <kbd className="rounded border border-input border-b-2 bg-background px-1.5 py-0.5 text-[10px]">
-                    ↵
-                  </kbd>
-                  run
-                </span>
+                <label className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70">
+                  <Cpu className="size-3.5" />
+                  <select
+                    value={manualModelId}
+                    onChange={(event) => setManualModelId(event.target.value)}
+                    aria-label="Model"
+                    className="cursor-pointer rounded-md border border-input bg-background px-2 py-1 font-sans text-[11px] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {MODEL_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <Button
                   type="submit"
                   disabled={!instruction.trim() || isRunning(run.status)}
