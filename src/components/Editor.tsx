@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Check,
   Code2,
+  Cpu,
   GitBranch,
   KeyRound,
   Loader2,
@@ -100,6 +101,13 @@ type Tab = "preview" | "source" | "diff" | "validation";
 type Device = "desktop" | "tablet" | "mobile";
 
 const sessionStorageKey = "pagewright.demoSession";
+const MODEL_OPTIONS = [
+  { id: "auto", label: "Auto · route by task" },
+  { id: "anthropic:strong", label: "Claude Opus 4.8" },
+  { id: "anthropic:cheap", label: "Claude Haiku 4.5" },
+  { id: "openai:strong", label: "GPT-5.5" },
+  { id: "openai:cheap", label: "GPT-5.4 nano" },
+];
 const emptyVersions: WorkspaceVersion[] = [];
 const emptyMessages: WorkspaceMessage[] = [];
 const sampleHtml = `<!doctype html>
@@ -172,6 +180,7 @@ export function Editor() {
   const [instruction, setInstruction] = useState("");
   const [selectedTab, setSelectedTab] = useState<Tab>("preview");
   const [device, setDevice] = useState<Device>("desktop");
+  const [manualModelId, setManualModelId] = useState("auto");
   const [run, setRun] = useState<RunState>({ status: "idle" });
   const [activeHtml, setActiveHtml] = useState("");
   const [previousHtml, setPreviousHtml] = useState("");
@@ -298,29 +307,47 @@ export function Editor() {
     try {
       setRun({ status: "patching", route: decision.route, summary: decision.reasoningSummary });
       if (decision.modelCallNeeded) {
+        const baseAnalysis = analyzeHtml(activeHtml);
         const providerEdit = await generateHtmlEdit({
           sessionToken: session.token,
           html: activeHtml,
           instruction: trimmedInstruction,
           structuralSummary: currentVersion.structuralSummary,
+          brandSpec: baseAnalysis.brandSpec,
+          contentInventory: baseAnalysis.contentInventory,
+          manualModelId,
         });
+
+        // Question-only: the router answered without producing a new version.
+        if (providerEdit.isQuestion) {
+          setInstruction("");
+          setRun({
+            status: "completed",
+            route: providerEdit.route,
+            summary: providerEdit.summary,
+          });
+          return;
+        }
+
         const plan: PatchPlan = {
           route: providerEdit.route as PatchPlan["route"],
           confidence: decision.confidence,
           targetSections: providerEdit.targetSections as PatchPlan["targetSections"],
           allowedChangeScope: providerEdit.allowedChangeScope,
           modelCallNeeded: true,
-          recommendedModelTier: "strong",
-          reasoningSummary: providerEdit.summary,
+          recommendedModelTier: providerEdit.tier === "strong" ? "strong" : "cheap",
+          reasoningSummary: providerEdit.reasoning,
           operations: [],
         };
         const validation = validateChange(activeHtml, providerEdit.html, plan);
         setPreviousHtml(activeHtml);
         setSelectedTab("diff");
+        const fallbackNote = providerEdit.fallbackUsed ? " · fallback" : "";
+        const repairNote = providerEdit.repairUsed ? " · repaired" : "";
         setRun({
           status: "saving",
           route: providerEdit.route,
-          summary: `Saving ${providerEdit.provider} / ${providerEdit.modelUsed} output.`,
+          summary: `${providerEdit.provider} · ${providerEdit.modelUsed}${fallbackNote}${repairNote}`,
           validation,
         });
         const analysis = analyzeHtml(providerEdit.html);
@@ -338,13 +365,21 @@ export function Editor() {
           patchOps: providerEdit.patchOps,
           validation,
           analysis,
+          modelMeta: {
+            provider: providerEdit.provider,
+            modelUsed: providerEdit.modelUsed,
+            tier: providerEdit.tier,
+            fallbackUsed: providerEdit.fallbackUsed,
+            repairUsed: providerEdit.repairUsed,
+            modelCalls: providerEdit.modelCalls,
+          },
         });
         setInstruction("");
         setSelectedVersionId(null);
         setRun({
           status: "completed",
           route: providerEdit.route,
-          summary: providerEdit.summary,
+          summary: `${providerEdit.summary} — ${providerEdit.provider} · ${providerEdit.modelUsed}${fallbackNote}${repairNote}`,
           validation,
         });
         return;
@@ -771,15 +806,21 @@ export function Editor() {
                 className="min-h-[88px] resize-y"
               />
               <div className="flex items-center justify-between gap-2.5">
-                <span className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70">
-                  <kbd className="rounded border border-input border-b-2 bg-background px-1.5 py-0.5 text-[10px]">
-                    ⌘
-                  </kbd>
-                  <kbd className="rounded border border-input border-b-2 bg-background px-1.5 py-0.5 text-[10px]">
-                    ↵
-                  </kbd>
-                  run
-                </span>
+                <label className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground/70">
+                  <Cpu className="size-3.5" />
+                  <select
+                    value={manualModelId}
+                    onChange={(event) => setManualModelId(event.target.value)}
+                    aria-label="Model"
+                    className="cursor-pointer rounded-md border border-input bg-background px-2 py-1 font-sans text-[11px] font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {MODEL_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <Button
                   type="submit"
                   disabled={!instruction.trim() || isRunning(run.status)}

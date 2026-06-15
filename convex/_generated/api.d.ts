@@ -10,6 +10,7 @@
 
 import type * as ai from "../ai.js";
 import type * as documents from "../documents.js";
+import type * as providers from "../providers.js";
 import type * as sessions from "../sessions.js";
 
 import type {
@@ -21,6 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   ai: typeof ai;
   documents: typeof documents;
+  providers: typeof providers;
   sessions: typeof sessions;
 }>;
 
